@@ -48,12 +48,13 @@ class Worker:
         
     @staticmethod
     def send_message(text):
-        try:
-            base_url = "https://api.telegram.org/bot{}/sendMessage?chat_id={}&text={}".format(
-                s.BOT_TOKEN, s.CHAT_ID, quote_plus(Worker.human_readable_dict(text))) 
-            requests.get(base_url)
-        except Exception as e:
-            logger.exception(e)
+        for chat in s.CHAT_ID:
+            try:
+                base_url = "https://api.telegram.org/bot{}/sendMessage?chat_id={}&text={}".format(
+                    s.BOT_TOKEN, chat, quote_plus(Worker.human_readable_dict(text))) 
+                requests.get(base_url)
+            except Exception as e:
+                logger.exception(e)
 
     async def save_page(self):
         timestr = time.strftime("%Y%m%d-%H%M%S")
