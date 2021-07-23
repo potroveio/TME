@@ -4,9 +4,11 @@ import io
 import json
 import logging
 import os
+import datetime
 import pyppeteer
 import requests
 import time
+import re
 
 import settings as s
 
@@ -68,17 +70,17 @@ class Worker:
 
         await self.page.screenshot({'path': os.path.join(*save_path, (timestr + ".png"))})
 
-    async def confirm_task(self):
-        await self.page.waitFor(2000)
-        await self.save_page()
+    async def confirm_task(self, task_id, translation_id):
 
-        job_confirm = await self.page.querySelector('button.btn.btn-OK.btn-block.pull-6')
+        res = await self.get_json_from_page(f'https://www.tm-stream.com/2_0/Handlers/TransPortal.asmx/AllocateTranslation?idTask={task_id}&idTranslation={translation_id}&isPreAllocate=1')
 
-        if job_confirm:
-            await job_confirm.click()
-            Worker.send_message('I am GOD. TME task details opened with css selector, button')
+        if res.get('IsSuccess'):
+            logger.info('Confirmed task')
+            Worker.send_message('Task confirmed')
         else:
-            logger.info('Couldnt confirm with css button')
+            logger.info('Task not confirmed')
+            Worker.send_message('Task not confirmed')
+
 
     async def check_mail_notifications(self):
         logger.info("Login on Gmail...")
@@ -123,8 +125,8 @@ class Worker:
 
     async def prepare(self):
         self.browser = await pyppeteer.launch(
-            headless=False,
-            #executablePath=r'.\GoogleChromePortable\GoogleChromePortable.exe',
+            # headless=False,
+            # executablePath=r'.\GoogleChromePortable\GoogleChromePortable.exe',
             defaultViewport=None
         )
         self.page = await self.browser.newPage()
@@ -142,11 +144,20 @@ class Worker:
     async def check_available_jobs(self):
 
         json_content = await self.get_json_from_page('https://www.tm-stream.com/2_0/Handlers/TransPortal.asmx/GetAvailableJobs')
-        available_jobs = json_content['AvailableJobs']
-        logger.info("{} New Jobs Available in India".format(len(available_jobs)))
+        available_jobs = json_content['FutureAllocatedRevisionJobs']
 
         if available_jobs:
-            Worker.send_message("TranslateMedia task found with Indian Method. Saving source to examine")
+
+            job = available_jobs[0]
+            task_id = job['idTask']
+            translation_id = job['idTranslation']
+            self.confirm_task(task_id, translation_id)
+
+            job_info = Worker.get_job_info(job)
+
+            logger.info("{} New Jobs Available in India".format(len(available_jobs)))
+            Worker.send_message("TranslateMedia task found with Indian Method. Saving source to examine. \n" + job_info)
+
             await self.page.goto('https://www.tm-stream.com/2_0/TranslatorPortal/defaultng.aspx#/jobBoard')
             await self.save_page()
             time.sleep(1)
@@ -164,6 +175,20 @@ class Worker:
     async def close(self):
         await self.browser.close()
 
+    @staticmethod
+    def get_job_info(job):
+        fee_payable = job['FeePayable']
+        dead_line = Worker.parse_time_to_native(job['scheduleCompleteTime'])
+        return f'Fee Payable: ${fee_payable}, Dead line: {dead_line}'
+
+    @staticmethod
+    def parse_time_to_native(time):
+        str_timestamp = re.search(r'\d+', time).group()
+        timestamp = int(str_timestamp)
+        date = datetime.datetime.fromtimestamp(timestamp/1000)
+        return date.strftime('%Y-%m-%d %H:%M:%S')
+
+
 async def main():
     worker = Worker()
     await worker.prepare()
@@ -180,7 +205,6 @@ async def main():
             logger.exception(e)
 
         try:
-            pass
             await worker.check_mail_notifications()
         except imapclient.imaplib.IMAP4.error as e:
             logger.warning('Cannot login in the email account')
