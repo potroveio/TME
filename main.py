@@ -144,23 +144,25 @@ class Worker:
     async def check_available_jobs(self):
 
         json_content = await self.get_json_from_page('https://www.tm-stream.com/2_0/Handlers/TransPortal.asmx/GetAvailableJobs')
-        available_jobs = json_content['FutureAllocatedRevisionJobs']
+        available_jobs = json_content['AvailableJobs']
+        future_allocated_revision_jobs = json_content['FutureAllocatedRevisionJobs']
 
-        if available_jobs:
+        if available_jobs or future_allocated_revision_jobs:
 
-            job = available_jobs[0]
-            task_id = job['idTask']
-            translation_id = job['idTranslation']
-            self.confirm_task(task_id, translation_id)
-
-            job_info = Worker.get_job_info(job)
-
+            # job = available_jobs[0]
+            # job_info = Worker.get_job_info(job)
             logger.info("{} New Jobs Available in India".format(len(available_jobs)))
-            Worker.send_message("TranslateMedia task found with Indian Method. Saving source to examine. \n" + job_info)
+            Worker.send_message("TranslateMedia task found with Indian Method. Saving source to examine.")
+
+            # task_id = job['idTask']
+            # translation_id = job['idTranslation']
+            # self.confirm_task(task_id, translation_id)
 
             await self.page.goto('https://www.tm-stream.com/2_0/TranslatorPortal/defaultng.aspx#/jobBoard')
             await self.save_page()
             time.sleep(1)
+        else:
+            logger.info("No New Jobs Available in India")
 
     async def login(self):
         await self.page.goto('https://www.tm-stream.com/2_0/login/login.html#/Login')
@@ -194,18 +196,19 @@ async def main():
     await worker.prepare()
     await worker.login()
 
-    LOOP_DELAY = 10000 # in milliseconds
+    LOOP_DELAY = 3000 # in milliseconds
 
     while True:
 
         try:
-            await worker.check_ongoing_jobs()
+            # await worker.check_ongoing_jobs()
             await worker.check_available_jobs()
         except Exception as e:
             logger.exception(e)
 
         try:
-            await worker.check_mail_notifications()
+            pass
+            # await worker.check_mail_notifications()
         except imapclient.imaplib.IMAP4.error as e:
             logger.warning('Cannot login in the email account')
         except Exception as e:
